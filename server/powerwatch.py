@@ -250,14 +250,13 @@ class Monitor(threading.Thread):
                 store.set_state(power=False, down_since=self.down_since)
                 store.add_event("down", ts=reference)
                 detail = (
-                    f"Ultimo pulse: {stamp(self.last_pulse)}."
+                    f"Ultimo segnale: {stamp(self.last_pulse)}"
                     if self.last_pulse
-                    else "Nessun pulse ricevuto dall'avvio del watchdog."
+                    else "Nessun segnale ricevuto dall'avvio del watchdog."
                 )
                 self._notify(
                     "CORRENTE ASSENTE",
-                    f"Nessun pulse dall'ESP32 da {human(now - reference)}.\n"
-                    f"{detail}\nFrigo e telecamere probabilmente non alimentati.",
+                    f"Nessun segnale da {human(now - reference)}.\n{detail}",
                     tag="power",
                     priority="high",
                 )

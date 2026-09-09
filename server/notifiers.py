@@ -97,7 +97,7 @@ def notify_all(cfg, store, title, body, tag, priority="high"):
     results = {}
     for name, fn in (
         ("push", lambda: send_webpush(cfg, store, title, body, tag, priority)),
-        ("email", lambda: send_email(cfg, f"[{cfg.site}] {title}", body)),
+        ("email", lambda: send_email(cfg, f"Powerwatch - {title}", body)),
     ):
         try:
             n = fn()
