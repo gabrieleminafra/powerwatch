@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.DS_Store
+venv/
+server/venv/
+server/data/
+server/logs/
+# Contiene password SMTP, chiavi VAPID e il token del pulse: mai nel repo.
+server/powerwatch.env

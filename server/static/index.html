@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Powerwatch</title>
+<meta name="theme-color" content="#0b1220">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Powerwatch">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" href="/static/icons/icon-192.png">
+<style>
+  :root {
+    --bg: #0b1220; --card: #131c2e; --line: #23304a;
+    --fg: #e8edf7; --muted: #8b9ab5;
+    --ok: #35d07f; --bad: #ff5a5a; --warn: #f5b301;
+    --accent: #f5b301;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 520px; margin: 0 auto; }
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+  header img { width: 28px; height: 28px; border-radius: 7px; }
+  header h1 { font-size: 16px; font-weight: 600; margin: 0; letter-spacing: .2px; }
+  header .site { color: var(--muted); font-size: 13px; margin-left: auto; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 16px; padding: 20px; margin-bottom: 14px;
+  }
+  .status { text-align: center; padding: 30px 20px; }
+  .dot {
+    width: 14px; height: 14px; border-radius: 50%; display: inline-block;
+    margin-right: 9px; vertical-align: 1px; background: var(--muted);
+  }
+  .status.ok .dot { background: var(--ok); box-shadow: 0 0 0 5px rgba(53,208,127,.15); }
+  .status.bad .dot { background: var(--bad); box-shadow: 0 0 0 5px rgba(255,90,90,.15);
+                     animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 12px rgba(255,90,90,0); } }
+  .status h2 { margin: 0 0 8px; font-size: 26px; font-weight: 650; letter-spacing: -.3px; }
+  .status .since { color: var(--muted); font-size: 14px; margin: 0; }
+  .status .since b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+          background: var(--line); border-radius: 12px; overflow: hidden; margin-top: 22px; }
+  .meta div { background: var(--card); padding: 12px 8px; }
+  .meta span { display: block; color: var(--muted); font-size: 11px;
+               text-transform: uppercase; letter-spacing: .6px; margin-bottom: 3px; }
+  .meta b { font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums; }
+
+  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px;
+       color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+
+  button {
+    font: inherit; font-weight: 600; border-radius: 11px; padding: 12px 16px;
+    border: 1px solid var(--line); background: #1c2740; color: var(--fg);
+    cursor: pointer; width: 100%; -webkit-tap-highlight-color: transparent;
+  }
+  button.primary { background: var(--accent); color: #1a1206; border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button + button { margin-top: 8px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 10px 0 0; }
+  .hint.bad { color: var(--bad); }
+  .hint.ok { color: var(--ok); }
+
+  ol.events { list-style: none; margin: 0; padding: 0; }
+  ol.events li { display: flex; align-items: baseline; gap: 10px;
+                 padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  ol.events li:first-child { border-top: 0; }
+  ol.events .k { font-weight: 600; min-width: 92px; }
+  ol.events .k.down { color: var(--bad); }
+  ol.events .k.up { color: var(--ok); }
+  ol.events .t { color: var(--muted); font-variant-numeric: tabular-nums; }
+  ol.events .d { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  input[type=text] {
+    font: inherit; width: 100%; padding: 12px 14px; border-radius: 11px;
+    border: 1px solid var(--line); background: #0f1728; color: var(--fg); margin-bottom: 10px;
+  }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+  .chip { font-size: 12px; padding: 4px 9px; border-radius: 999px;
+          border: 1px solid var(--line); color: var(--muted); }
+  .chip.on { color: var(--ok); border-color: rgba(53,208,127,.4); }
+  .panel-head {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    background: none; border: 0; text-align: left;
+    /* 44px di area toccabile: sotto, sul telefono si sbaglia. I margini
+       negativi la allargano dentro il padding della card senza spostare
+       otticamente il titolo. */
+    min-height: 44px; padding: 0 4px; margin: -10px -4px 4px;
+  }
+  .panel-head h3 { margin: 0; }
+  .panel-head:active { background: #1a2436; border-radius: 10px; }
+  .panel-summary { color: var(--muted); font-size: 13px; font-weight: 400; margin-left: auto; }
+  .chev { color: var(--muted); transition: transform .15s ease; font-size: 18px; padding: 0 4px; }
+  .panel-head[aria-expanded="false"] .chev { transform: rotate(-90deg); }
+  .panel-head[aria-expanded="false"] + div { display: none; }
+
+  .segmented { display: flex; gap: 1px; background: var(--line);
+               border-radius: 10px; overflow: hidden; margin-bottom: 14px; }
+  .segmented button { border: 0; border-radius: 0; background: #1a2436; color: var(--muted);
+                      padding: 9px 4px; font-size: 13px; font-weight: 500; }
+  .segmented button.on { background: #2b3a58; color: var(--fg); }
+
+  .meta.stats { grid-template-columns: 1fr 1fr; margin-top: 0; }
+  .meta.stats b.big { font-size: 20px; }
+
+  .strip { display: flex; gap: 2px; margin-top: 14px; height: 26px; align-items: flex-end; }
+  .strip i { flex: 1; border-radius: 2px; background: #24314a; height: 100%; }
+  .strip i.d1 { background: var(--warn); }
+  .strip i.d2 { background: #ff9147; }
+  .strip i.d3 { background: var(--bad); }
+
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <img src="/static/icons/icon-192.png" alt="">
+    <h1>Powerwatch</h1>
+    <span class="site" id="site"></span>
+  </header>
+
+  <!-- schermata di sblocco -->
+  <section class="card" id="unlock" hidden>
+    <h3>Chiave di accesso</h3>
+    <input type="text" id="key-input" placeholder="PW_UI_TOKEN" autocomplete="off"
+           autocapitalize="off" spellcheck="false">
+    <button class="primary" id="key-save">Sblocca</button>
+    <p class="hint" id="key-hint" hidden>Chiave non valida.</p>
+  </section>
+
+  <main id="app" hidden>
+    <section class="card status" id="status">
+      <h2><span class="dot"></span><span id="state-text">…</span></h2>
+      <p class="since" id="since"></p>
+      <div class="meta">
+        <div><span>Ultimo pulse</span><b id="pulse-age">—</b></div>
+        <div><span>Soglia blackout</span><b id="timeout">—</b></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <button class="panel-head" id="push-head" aria-expanded="true" aria-controls="push-body">
+        <h3>Notifiche</h3>
+        <span class="panel-summary" id="push-summary"></span>
+        <span class="chev" aria-hidden="true">&#9662;</span>
+      </button>
+      <div id="push-body">
+        <button class="primary" id="btn-push">Attiva notifiche push</button>
+        <button id="btn-test">Manda una notifica di prova</button>
+        <p class="hint" id="push-hint"></p>
+        <div class="chips" id="chips"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Uptime</h3>
+      <div class="segmented" id="stats-range">
+        <button data-w="7g">7 giorni</button>
+        <button data-w="30g" class="on">30 giorni</button>
+        <button data-w="90g">90 giorni</button>
+        <button data-w="365g">1 anno</button>
+      </div>
+      <div class="meta stats" id="stats-tiles"></div>
+      <div class="strip" id="stats-strip" title="Ultimi 30 giorni"></div>
+      <p class="hint" id="stats-note"></p>
+    </section>
+
+    <section class="card">
+      <h3>Ultimi eventi</h3>
+      <ol class="events" id="events"><li class="t">Nessun evento registrato.</li></ol>
+    </section>
+  </main>
+
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+services:
+  powerwatch:
+    build: .
+    container_name: powerwatch
+    restart: unless-stopped
+    env_file: powerwatch.env
+    environment:
+      # Senza questo il container e' in UTC e gli orari nelle notifiche sballano.
+      - TZ=Europe/Rome
+    ports:
+      - "47999:47999/udp" # pulse dall'ESP32
+      - "8080:8080"       # dashboard (mettici davanti un reverse proxy HTTPS)
+    volumes:
+      - ./data:/data
