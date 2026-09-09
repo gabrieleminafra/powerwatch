@@ -132,6 +132,7 @@ senza chiave chiunque la trovi può leggere quando la tua casa è al buio.
 | `PW_TIMEOUT` | 90 | Secondi senza pulse prima di dichiarare il blackout. Tienilo ≥ 4-5× l'intervallo di pulse: UDP perde pacchetti e il WiFi si riconnette. |
 | `PW_RESTORE_CONFIRM` | 20 | Secondi di pulse continui prima di dichiarare il ripristino. Evita raffiche se la corrente sfarfalla. |
 | `PW_PUSH_TTL` | 86400 | Se il telefono è spento o offline, il push service tiene la notifica per questo tempo e la consegna appena torna. |
+| `PW_REMIND_EVERY` | 1800 | Ogni quanti secondi ripetere la push finché il blackout dura (0 disattiva). Solo push, non email. Sapendo che arriva ogni 30 minuti, il suo silenzio dice che l'UPS si è scaricato. |
 | `PW_VAPID_SUBJECT` | — | Il tuo recapito come operatore del server, dentro il JWT che firma ogni push (RFC 8292). Serve ad Apple/Google per contattarti se il tuo endpoint fa danni. Dev'essere un `mailto:` o `https:`, ma non viene verificato: col placeholder tutto funziona, semplicemente quell'avviso non ti arriverebbe. Nota che il valore viene spedito ai push service a ogni invio. |
 | `PW_UI_TOKEN` | — | Chiave della dashboard. Vuota = nessuna autenticazione. |
 | `PW_MAIL_TO` | — | Destinatari email, separati da virgola: `io@x.it,altro@y.it`. Un indirizzo rifiutato viene loggato e non blocca gli altri. |

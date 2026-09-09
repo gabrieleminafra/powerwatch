@@ -54,6 +54,10 @@ class Config:
         # TTL alto: se il telefono è spento o offline, la push viene comunque
         # consegnata quando torna online entro questo tempo.
         self.push_ttl = int(e("PW_PUSH_TTL", "86400"))
+        # Promemoria periodico finche' il blackout dura. Il suo scopo non e'
+        # solo insistere: sapendo che arriva ogni N secondi, il suo silenzio
+        # dice che l'UPS si e' scaricato e il server e' morto. 0 disattiva.
+        self.remind_every = int(e("PW_REMIND_EVERY", "1800"))
 
         # email
         self.smtp_host = e("PW_SMTP_HOST", "")
@@ -108,20 +112,22 @@ class Notifier(threading.Thread):
         super().__init__(name="notifier")
         self.q = queue.Queue()
 
-    def send(self, title, body, tag, priority="high"):
-        self.q.put((title, body, tag, priority, 0))
+    def send(self, title, body, tag, priority="high", channels=None, retry=True):
+        self.q.put((title, body, tag, priority, 0, channels, retry))
 
     def run(self):
         try:
             while True:
-                title, body, tag, prio, tries = self.q.get()
+                title, body, tag, prio, tries, channels, retry = self.q.get()
                 label = title if tries == 0 else f"(ritardata) {title}"
-                if notifiers.notify_all(cfg, store, label, body, tag, prio):
+                if notifiers.notify_all(cfg, store, label, body, tag, prio, channels):
                     continue
-                if tries < self.MAX_RETRY:
+                if retry and tries < self.MAX_RETRY:
                     # Rete giu' insieme alla corrente: riprova senza mollare.
+                    # I promemoria invece non si ritentano: ne arriva un altro
+                    # fra poco, e riproporre quelli vecchi sarebbe rumore.
                     time.sleep(60)
-                    self.q.put((title, body, tag, prio, tries + 1))
+                    self.q.put((title, body, tag, prio, tries + 1, channels, retry))
                 else:
                     log(f"[notify] rinuncio dopo {tries} tentativi: {title}")
         except BaseException as e:
@@ -144,6 +150,7 @@ class Monitor(threading.Thread):
         self.last_pulse = None
         self.up_since = None
         self.started = time.time()
+        self.last_reminder = 0.0
         self._bad_token_logged = {}           # per limitare il log del rumore
 
     # --- lo stato che la dashboard legge ---
@@ -165,8 +172,8 @@ class Monitor(threading.Thread):
             },
         }
 
-    def _notify(self, title, body, tag, priority="high"):
-        notifier.send(title, body, tag, priority)
+    def _notify(self, title, body, tag, priority="high", channels=None, retry=True):
+        notifier.send(title, body, tag, priority, channels, retry)
 
     def run(self):
         try:
@@ -249,6 +256,7 @@ class Monitor(threading.Thread):
                 self.up_since = None
                 store.set_state(power=False, down_since=self.down_since)
                 store.add_event("down", ts=reference)
+                self.last_reminder = now
                 detail = (
                     f"Ultimo segnale: {stamp(self.last_pulse)}"
                     if self.last_pulse
@@ -259,6 +267,24 @@ class Monitor(threading.Thread):
                     f"Nessun segnale da {human(now - reference)}.\n{detail}",
                     tag="power",
                     priority="high",
+                )
+
+            # --- promemoria finche' il blackout dura ---
+            if (
+                cfg.remind_every
+                and self.power is False
+                and self.down_since
+                and now - self.last_reminder >= cfg.remind_every
+            ):
+                self.last_reminder = now
+                self._notify(
+                    "Corrente ancora assente",
+                    f"Senza corrente da {human(now - self.down_since)}.\n"
+                    f"Ultimo segnale: {stamp(self.down_since)}",
+                    tag="power",
+                    priority="high",
+                    channels=("push",),
+                    retry=False,
                 )
 
             if stale:

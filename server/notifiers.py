@@ -89,9 +89,11 @@ def send_email(cfg, subject, body):
 
 
 # ---------- fan-out ----------
-def notify_all(cfg, store, title, body, tag, priority="high"):
-    """Best-effort su tutti i canali configurati. Non solleva mai.
+def notify_all(cfg, store, title, body, tag, priority="high", channels=None):
+    """Best-effort sui canali richiesti. Non solleva mai.
 
+    `channels` limita l'invio (es. solo push per i promemoria periodici, che
+    su email diventerebbero decine di messaggi in un blackout lungo).
     Ritorna True se almeno un canale ha consegnato.
     """
     results = {}
@@ -99,6 +101,8 @@ def notify_all(cfg, store, title, body, tag, priority="high"):
         ("push", lambda: send_webpush(cfg, store, title, body, tag, priority)),
         ("email", lambda: send_email(cfg, f"Powerwatch - {title}", body)),
     ):
+        if channels and name not in channels:
+            continue
         try:
             n = fn()
             if n:
