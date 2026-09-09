@@ -10,6 +10,7 @@ storico. Flask serve la dashboard PWA e una manciata di endpoint JSON.
 
 import functools
 import os
+import queue
 import secrets
 import socket
 import threading
@@ -89,6 +90,48 @@ def stamp(ts):
     return datetime.fromtimestamp(ts).strftime("%d/%m/%Y %H:%M:%S")
 
 
+# ---------- invio notifiche ----------
+class Notifier(threading.Thread):
+    """Manda le notifiche fuori dal thread di monitoraggio.
+
+    Serve per due motivi. SMTP e push sono I/O di rete che possono bloccare
+    per decine di secondi: dentro il loop del monitor smetterebbero di far
+    leggere i pulse. E salvare lo stato *prima* di notificare evita che un
+    crash a meta' invio faccia rivedere la stessa transizione al riavvio,
+    con evento e notifica doppi.
+    """
+
+    daemon = True
+    MAX_RETRY = 60
+
+    def __init__(self):
+        super().__init__(name="notifier")
+        self.q = queue.Queue()
+
+    def send(self, title, body, tag, priority="high"):
+        self.q.put((title, body, tag, priority, 0))
+
+    def run(self):
+        try:
+            while True:
+                title, body, tag, prio, tries = self.q.get()
+                label = title if tries == 0 else f"(ritardata) {title}"
+                if notifiers.notify_all(cfg, store, label, body, tag, prio):
+                    continue
+                if tries < self.MAX_RETRY:
+                    # Rete giu' insieme alla corrente: riprova senza mollare.
+                    time.sleep(60)
+                    self.q.put((title, body, tag, prio, tries + 1))
+                else:
+                    log(f"[notify] rinuncio dopo {tries} tentativi: {title}")
+        except BaseException as e:
+            log(f"[notifier] thread terminato per {e!r}: esco per farmi riavviare")
+            os._exit(1)
+
+
+notifier = Notifier()
+
+
 # ---------- monitor ----------
 class Monitor(threading.Thread):
     daemon = True
@@ -101,8 +144,6 @@ class Monitor(threading.Thread):
         self.last_pulse = None
         self.up_since = None
         self.started = time.time()
-        self.pending = []                     # notifiche da ritentare
-        self._last_retry = 0.0
         self._bad_token_logged = {}           # per limitare il log del rumore
 
     # --- lo stato che la dashboard legge ---
@@ -117,7 +158,7 @@ class Monitor(threading.Thread):
             "timeout": cfg.timeout,
             "server_time": now,
             "push_subs": store.count_subs(),
-            "pending_notifications": len(self.pending),
+            "pending_notifications": notifier.q.qsize(),
             "channels": {
                 "push": bool(cfg.vapid_private_key),
                 "email": bool(cfg.smtp_host and cfg.mail_to),
@@ -125,10 +166,18 @@ class Monitor(threading.Thread):
         }
 
     def _notify(self, title, body, tag, priority="high"):
-        if not notifiers.notify_all(cfg, store, title, body, tag, priority):
-            self.pending.append((title, body, tag, priority))
+        notifier.send(title, body, tag, priority)
 
     def run(self):
+        try:
+            self._run()
+        except BaseException as e:
+            # Meglio un container che riparte di un watchdog morto in silenzio:
+            # uscendo, la restart policy di Docker ci rimette in piedi.
+            log(f"[monitor] thread terminato per {e!r}: esco per farmi riavviare")
+            os._exit(1)
+
+    def _run(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((cfg.bind_host, cfg.pulse_port))
@@ -172,28 +221,33 @@ class Monitor(threading.Thread):
                 and now - self.up_since >= cfg.restore_confirm
                 and self.power is not True
             ):
-                if self.power is False and self.down_since:
-                    dur = now - self.down_since
+                was_down, down_since = self.power is False, self.down_since
+                # Lo stato va su disco prima dell'invio: se moriamo durante la
+                # notifica, al riavvio la transizione non viene rifatta.
+                self.power = True
+                self.down_since = None
+                store.set_state(power=True, down_since=None)
+
+                if was_down and down_since:
+                    dur = now - down_since
                     store.add_event("up", ts=now, duration=dur)
                     self._notify(
                         "Corrente ripristinata",
                         f"Tornata alle {stamp(now)}.\n"
-                        f"Blackout iniziato alle {stamp(self.down_since)}.\n"
+                        f"Blackout iniziato alle {stamp(down_since)}.\n"
                         f"Durata: {human(dur)}.",
                         tag="power",
                         priority="normal",
                     )
                 else:
                     log("[state] primo aggancio: corrente OK")
-                self.power = True
-                self.down_since = None
-                store.set_state(power=True, down_since=None)
 
             # --- blackout ---
             elif stale and self.power is not False:
                 self.down_since = reference
                 self.power = False
                 self.up_since = None
+                store.set_state(power=False, down_since=self.down_since)
                 store.add_event("down", ts=reference)
                 detail = (
                     f"Ultimo pulse: {stamp(self.last_pulse)}."
@@ -207,21 +261,10 @@ class Monitor(threading.Thread):
                     tag="power",
                     priority="high",
                 )
-                store.set_state(power=False, down_since=self.down_since)
 
             if stale:
                 self.up_since = None
 
-            # --- ritenta le notifiche non consegnate (es. ISP giù col blackout) ---
-            if self.pending and now - self._last_retry > 60:
-                self._last_retry = now
-                still = []
-                for title, body, tag, prio in self.pending:
-                    if not notifiers.notify_all(
-                        cfg, store, f"(ritardata) {title}", body, tag, prio
-                    ):
-                        still.append((title, body, tag, prio))
-                self.pending = still
 
 
 # ---------- statistiche di uptime ----------
@@ -445,7 +488,10 @@ def api_stats():
 
 @app.get("/healthz")
 def healthz():
-    return jsonify({"ok": True, "power": monitor.power})
+    """Sano solo se il thread che ascolta i pulse e' davvero vivo."""
+    alive = monitor.is_alive()
+    body = {"ok": alive, "monitor_alive": alive, "power": monitor.power}
+    return jsonify(body), (200 if alive else 503)
 
 
 def main():
@@ -463,6 +509,7 @@ def main():
         events = store.all_events()
         store.set_state(monitoring_since=events[0]["ts"] if events else time.time())
 
+    notifier.start()
     monitor.start()
     from waitress import serve
     log(f"[http] dashboard su :{cfg.http_port}")

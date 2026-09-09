@@ -2,7 +2,7 @@ services:
   powerwatch:
     build: .
     container_name: powerwatch
-    restart: unless-stopped
+    restart: always
     env_file: powerwatch.env
     environment:
       # Senza questo il container e' in UTC e gli orari nelle notifiche sballano.
