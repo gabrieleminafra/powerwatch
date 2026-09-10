@@ -4,6 +4,14 @@ services:
     container_name: powerwatch
     restart: always
     env_file: powerwatch.env
+    # DNS esplicito: al boot Docker puo' far partire il container prima che il
+    # DHCP abbia scritto /etc/resolv.conf sull'host, e il container si porta
+    # dietro quella configurazione vuota per sempre. Succede proprio dopo un
+    # blackout, cioe' quando le notifiche servono. Il router per i nomi locali,
+    # il resolver pubblico come rete di sicurezza.
+    dns:
+      - 192.168.178.1
+      - 1.1.1.1
     environment:
       # Senza questo il container e' in UTC e gli orari nelle notifiche sballano.
       - TZ=Europe/Rome
