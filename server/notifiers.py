@@ -64,6 +64,8 @@ def send_email(cfg, subject, body):
     msg["From"] = cfg.mail_from
     msg["To"] = ", ".join(cfg.mail_to)
     msg["Date"] = formatdate(localtime=True)
+    if cfg.dashboard_url:
+        body = f"{body}\n\nPer più informazioni visita {cfg.dashboard_url}"
     msg.set_content(body)
 
     ctx = ssl.create_default_context()

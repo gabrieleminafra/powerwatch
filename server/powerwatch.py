@@ -59,6 +59,10 @@ class Config:
         # dice che l'UPS si e' scaricato e il server e' morto. 0 disattiva.
         self.remind_every = int(e("PW_REMIND_EVERY", "1800"))
 
+        # Link alla dashboard in coda alle email. Le push non ne hanno bisogno:
+        # toccandole si apre gia' la PWA.
+        self.dashboard_url = e("PW_DASHBOARD_URL", "").strip().rstrip("/")
+
         # email
         self.smtp_host = e("PW_SMTP_HOST", "")
         self.smtp_port = int(e("PW_SMTP_PORT", "587"))
